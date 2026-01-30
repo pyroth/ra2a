@@ -321,6 +321,23 @@ impl ListTaskPushNotificationConfigParams {
     }
 }
 
+impl GetTaskPushNotificationConfigParams {
+    /// Creates new get parameters.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            push_notification_config_id: None,
+            metadata: None,
+        }
+    }
+
+    /// Sets the push notification config ID.
+    pub fn with_config_id(mut self, config_id: impl Into<String>) -> Self {
+        self.push_notification_config_id = Some(config_id.into());
+        self
+    }
+}
+
 /// Parameters for resubscribing to a task's event stream.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskResubscriptionParams {
@@ -416,6 +433,17 @@ pub type DeleteTaskPushNotificationConfigRequest =
 /// Request for listing push notification configs.
 pub type ListTaskPushNotificationConfigsRequest =
     JsonRpcRequest<ListTaskPushNotificationConfigParams>;
+
+/// Request for getting authenticated extended card.
+pub type GetAuthenticatedExtendedCardRequest = JsonRpcRequest<GetAuthenticatedExtendedCardParams>;
+
+/// Parameters for getting authenticated extended card.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GetAuthenticatedExtendedCardParams {
+    /// Optional metadata associated with the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+}
 
 /// Request for streaming messages.
 pub type MessageStreamRequest = JsonRpcRequest<MessageStreamParams>;

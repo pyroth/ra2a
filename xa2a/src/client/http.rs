@@ -9,7 +9,8 @@ use std::time::Duration;
 use super::{Client, ClientConfig, ClientEvent, EventStream, TransportConfig};
 use crate::error::{A2AError, Result};
 use crate::types::{
-    AgentCard, GetTaskPushNotificationConfigParams, JsonRpcRequest, JsonRpcResponse, Message,
+    AgentCard, DeleteTaskPushNotificationConfigParams, GetTaskPushNotificationConfigParams,
+    JsonRpcRequest, JsonRpcResponse, ListTaskPushNotificationConfigParams, Message,
     MessageSendParams, SendMessageResult, Task, TaskIdParams, TaskPushNotificationConfig,
     TaskQueryParams,
 };
@@ -191,6 +192,24 @@ impl Client for A2AClient {
         let event = ClientEvent::TaskUpdate { task, update: None };
         let stream = stream::once(async move { Ok(event) });
         Ok(Box::pin(stream))
+    }
+
+    async fn list_task_push_notification_config(
+        &self,
+        params: ListTaskPushNotificationConfigParams,
+    ) -> Result<Vec<TaskPushNotificationConfig>> {
+        let request: JsonRpcRequest<ListTaskPushNotificationConfigParams> =
+            JsonRpcRequest::new("tasks/pushNotificationConfig/list", params);
+        self.send_request(request).await
+    }
+
+    async fn delete_task_push_notification_config(
+        &self,
+        params: DeleteTaskPushNotificationConfigParams,
+    ) -> Result<()> {
+        let request: JsonRpcRequest<DeleteTaskPushNotificationConfigParams> =
+            JsonRpcRequest::new("tasks/pushNotificationConfig/delete", params);
+        self.send_request(request).await
     }
 
     async fn get_agent_card(&self) -> Result<AgentCard> {

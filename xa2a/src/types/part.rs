@@ -134,6 +134,14 @@ pub enum FileContent {
     Uri(FileWithUri),
 }
 
+/// Common base fields for file content.
+pub trait FileBase {
+    /// Returns the MIME type of the file.
+    fn mime_type(&self) -> Option<&str>;
+    /// Returns the name of the file.
+    fn name(&self) -> Option<&str>;
+}
+
 /// Represents a file with its content provided as base64-encoded bytes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileWithBytes {
@@ -147,6 +155,39 @@ pub struct FileWithBytes {
     pub name: Option<String>,
 }
 
+impl FileBase for FileWithBytes {
+    fn mime_type(&self) -> Option<&str> {
+        self.mime_type.as_deref()
+    }
+
+    fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+}
+
+impl FileWithBytes {
+    /// Creates a new file with bytes content.
+    pub fn new(bytes: impl Into<String>) -> Self {
+        Self {
+            bytes: bytes.into(),
+            mime_type: None,
+            name: None,
+        }
+    }
+
+    /// Sets the MIME type.
+    pub fn with_mime_type(mut self, mime_type: impl Into<String>) -> Self {
+        self.mime_type = Some(mime_type.into());
+        self
+    }
+
+    /// Sets the file name.
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+}
+
 /// Represents a file with its content located at a URI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileWithUri {
@@ -158,6 +199,39 @@ pub struct FileWithUri {
     /// An optional name for the file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+}
+
+impl FileBase for FileWithUri {
+    fn mime_type(&self) -> Option<&str> {
+        self.mime_type.as_deref()
+    }
+
+    fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+}
+
+impl FileWithUri {
+    /// Creates a new file with URI content.
+    pub fn new(uri: impl Into<String>) -> Self {
+        Self {
+            uri: uri.into(),
+            mime_type: None,
+            name: None,
+        }
+    }
+
+    /// Sets the MIME type.
+    pub fn with_mime_type(mut self, mime_type: impl Into<String>) -> Self {
+        self.mime_type = Some(mime_type.into());
+        self
+    }
+
+    /// Sets the file name.
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
 }
 
 /// Represents a structured data segment within a message or artifact.

@@ -64,8 +64,9 @@ use std::pin::Pin;
 
 use crate::error::Result;
 use crate::types::{
-    AgentCard, GetTaskPushNotificationConfigParams, Message, Task, TaskArtifactUpdateEvent,
-    TaskIdParams, TaskPushNotificationConfig, TaskQueryParams, TaskStatusUpdateEvent,
+    AgentCard, DeleteTaskPushNotificationConfigParams, GetTaskPushNotificationConfigParams,
+    ListTaskPushNotificationConfigParams, Message, Task, TaskArtifactUpdateEvent, TaskIdParams,
+    TaskPushNotificationConfig, TaskQueryParams, TaskStatusUpdateEvent,
 };
 
 /// Update event from streaming responses.
@@ -125,6 +126,18 @@ pub trait Client: Send + Sync {
 
     /// Resubscribes to a task's event stream.
     async fn resubscribe(&self, params: TaskIdParams) -> Result<EventStream>;
+
+    /// Lists all push notification configurations for a task.
+    async fn list_task_push_notification_config(
+        &self,
+        params: ListTaskPushNotificationConfigParams,
+    ) -> Result<Vec<TaskPushNotificationConfig>>;
+
+    /// Deletes a push notification configuration for a task.
+    async fn delete_task_push_notification_config(
+        &self,
+        params: DeleteTaskPushNotificationConfigParams,
+    ) -> Result<()>;
 
     /// Retrieves the agent's card.
     async fn get_agent_card(&self) -> Result<AgentCard>;
