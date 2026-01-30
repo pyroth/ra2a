@@ -182,6 +182,96 @@ pub type InMemoryQueueManager = QueueManager;
 pub trait EventConsumer: Send + Sync {
     /// Processes an event.
     async fn consume(&self, event: &Event) -> Result<()>;
+
+    /// Called when the stream ends.
+    async fn on_complete(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Called when an error occurs.
+    async fn on_error(&self, _error: &A2AError) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Helper to create an event consumer from a closure.
+pub fn event_consumer_fn<F>(f: F) -> impl EventConsumer
+where
+    F: Fn(&Event) -> Result<()> + Send + Sync + 'static,
+{
+    struct FnConsumer<F>(F);
+
+    #[async_trait::async_trait]
+    impl<F> EventConsumer for FnConsumer<F>
+    where
+        F: Fn(&Event) -> Result<()> + Send + Sync + 'static,
+    {
+        async fn consume(&self, event: &Event) -> Result<()> {
+            (self.0)(event)
+        }
+    }
+
+    FnConsumer(f)
+}
+
+/// Runs an event consumer on a broadcast receiver until the stream ends.
+pub async fn run_consumer<C: EventConsumer>(
+    consumer: &C,
+    mut receiver: broadcast::Receiver<Event>,
+) -> Result<()> {
+    loop {
+        match receiver.recv().await {
+            Ok(event) => {
+                if let Err(e) = consumer.consume(&event).await {
+                    consumer.on_error(&e).await?;
+                }
+            }
+            Err(broadcast::error::RecvError::Closed) => {
+                consumer.on_complete().await?;
+                break;
+            }
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                // Log lag but continue
+                tracing::warn!("Event consumer lagged by {} events", n);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Builder for creating event streams.
+pub struct EventStreamBuilder {
+    task_id: String,
+    queue: Arc<EventQueue>,
+}
+
+impl EventStreamBuilder {
+    /// Creates a new event stream builder.
+    pub fn new(task_id: impl Into<String>, queue: Arc<EventQueue>) -> Self {
+        Self {
+            task_id: task_id.into(),
+            queue,
+        }
+    }
+
+    /// Converts to an async stream.
+    pub fn into_stream(self) -> impl futures::Stream<Item = Result<Event>> {
+        let receiver = self.queue.subscribe();
+        futures::stream::unfold(receiver, |mut rx| async move {
+            match rx.recv().await {
+                Ok(event) => Some((Ok(event), rx)),
+                Err(broadcast::error::RecvError::Closed) => None,
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    Some((Err(A2AError::Stream("Event stream lagged".to_string())), rx))
+                }
+            }
+        })
+    }
+
+    /// Returns the task ID.
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
 }
 
 #[cfg(test)]

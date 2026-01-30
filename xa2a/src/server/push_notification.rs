@@ -226,10 +226,7 @@ impl PushNotificationManager {
         let mut last_error = None;
         for config in configs {
             if let Err(e) = self.sender.send_status_update(&config, event).await {
-                error!(
-                    "Failed to send push notification to {}: {}",
-                    config.url, e
-                );
+                error!("Failed to send push notification to {}: {}", config.url, e);
                 last_error = Some(e);
             }
         }
@@ -255,10 +252,7 @@ impl PushNotificationManager {
         let mut last_error = None;
         for config in configs {
             if let Err(e) = self.sender.send_artifact_update(&config, event).await {
-                error!(
-                    "Failed to send push notification to {}: {}",
-                    config.url, e
-                );
+                error!("Failed to send push notification to {}: {}", config.url, e);
                 last_error = Some(e);
             }
         }

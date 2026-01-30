@@ -45,10 +45,6 @@ impl Default for RequestId {
     }
 }
 
-// ============================================================================
-// Base JSON-RPC types
-// ============================================================================
-
 /// Represents a JSON-RPC 2.0 Request object.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonRpcRequest<P> {
@@ -130,10 +126,6 @@ impl JsonRpcErrorResponse {
         }
     }
 }
-
-// ============================================================================
-// A2A-specific request/response types
-// ============================================================================
 
 /// Parameters for the message/send request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -298,9 +290,100 @@ pub struct DeleteTaskPushNotificationConfigParams {
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
-// ============================================================================
-// Request type aliases
-// ============================================================================
+impl DeleteTaskPushNotificationConfigParams {
+    /// Creates new delete parameters.
+    pub fn new(id: impl Into<String>, config_id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            push_notification_config_id: config_id.into(),
+            metadata: None,
+        }
+    }
+}
+
+/// Parameters for listing push notification configs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListTaskPushNotificationConfigParams {
+    /// The unique identifier of the task.
+    pub id: String,
+    /// Optional metadata associated with the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+}
+
+impl ListTaskPushNotificationConfigParams {
+    /// Creates new list parameters.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            metadata: None,
+        }
+    }
+}
+
+/// Parameters for resubscribing to a task's event stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskResubscriptionParams {
+    /// The unique identifier of the task.
+    pub id: String,
+    /// Optional metadata associated with the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+}
+
+impl TaskResubscriptionParams {
+    /// Creates new resubscription parameters.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            metadata: None,
+        }
+    }
+}
+
+/// Configuration for message streaming request.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MessageStreamConfiguration {
+    /// A list of output MIME types the client accepts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accepted_output_modes: Option<Vec<String>>,
+    /// The number of recent messages to retrieve in the response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub history_length: Option<i32>,
+    /// Configuration for push notifications.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push_notification_config: Option<PushNotificationConfig>,
+}
+
+/// Parameters for streaming message request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageStreamParams {
+    /// The message being sent to the agent.
+    pub message: Message,
+    /// Optional configuration for the stream request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<MessageStreamConfiguration>,
+    /// Optional metadata for extensions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+}
+
+impl MessageStreamParams {
+    /// Creates new stream parameters with a message.
+    pub fn new(message: Message) -> Self {
+        Self {
+            message,
+            configuration: None,
+            metadata: None,
+        }
+    }
+
+    /// Sets the configuration.
+    pub fn with_configuration(mut self, config: MessageStreamConfiguration) -> Self {
+        self.configuration = Some(config);
+        self
+    }
+}
 
 /// Request for sending a message.
 pub type SendMessageRequest = JsonRpcRequest<MessageSendParams>;
@@ -330,9 +413,12 @@ pub type ListTaskPushNotificationConfigRequest = JsonRpcRequest<TaskIdParams>;
 pub type DeleteTaskPushNotificationConfigRequest =
     JsonRpcRequest<DeleteTaskPushNotificationConfigParams>;
 
-// ============================================================================
-// Response types
-// ============================================================================
+/// Request for listing push notification configs.
+pub type ListTaskPushNotificationConfigsRequest =
+    JsonRpcRequest<ListTaskPushNotificationConfigParams>;
+
+/// Request for streaming messages.
+pub type MessageStreamRequest = JsonRpcRequest<MessageStreamParams>;
 
 /// Result of a message/send request.
 #[derive(Debug, Clone, Serialize, Deserialize)]

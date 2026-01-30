@@ -40,9 +40,11 @@
 
 mod app;
 mod context;
+mod context_builder;
 mod events;
 mod handler;
 mod push_notification;
+mod result_aggregator;
 mod sse;
 mod streaming_handler;
 mod task_manager;
@@ -50,9 +52,11 @@ mod task_store;
 
 pub use app::*;
 pub use context::*;
+pub use context_builder::*;
 pub use events::*;
 pub use handler::*;
 pub use push_notification::*;
+pub use result_aggregator::*;
 pub use sse::*;
 pub use streaming_handler::*;
 pub use task_manager::*;

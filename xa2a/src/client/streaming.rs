@@ -14,7 +14,7 @@ use super::{Client, ClientConfig, ClientEvent, EventStream};
 use crate::error::{A2AError, Result};
 use crate::types::{
     AgentCard, GetTaskPushNotificationConfigParams, JsonRpcRequest, JsonRpcResponse, Message,
-    MessageSendParams, MessageSendConfiguration, SendMessageResult, Task, TaskIdParams,
+    MessageSendConfiguration, MessageSendParams, SendMessageResult, Task, TaskIdParams,
     TaskPushNotificationConfig, TaskQueryParams,
 };
 
@@ -157,13 +157,12 @@ impl StreamingClient {
 
         // Create a stream from the response bytes
         let byte_stream = response.bytes_stream();
-        let line_stream = super::sse::SseLineStream::new(
-            futures::StreamExt::map(byte_stream, |result| {
+        let line_stream =
+            super::sse::SseLineStream::new(futures::StreamExt::map(byte_stream, |result| {
                 result
                     .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
                     .map_err(|e| e.to_string())
-            })
-        );
+            }));
 
         Ok(Box::pin(line_stream))
     }
@@ -289,13 +288,12 @@ impl Client for StreamingClient {
         }
 
         let byte_stream = response.bytes_stream();
-        let line_stream = super::sse::SseLineStream::new(
-            futures::StreamExt::map(byte_stream, |result| {
+        let line_stream =
+            super::sse::SseLineStream::new(futures::StreamExt::map(byte_stream, |result| {
                 result
                     .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
                     .map_err(|e| e.to_string())
-            })
-        );
+            }));
 
         Ok(Box::pin(line_stream))
     }

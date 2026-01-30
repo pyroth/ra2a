@@ -71,8 +71,8 @@ impl A2ASseEvent {
             }
             SseEventType::StatusUpdate => {
                 let event: TaskStatusUpdateEvent = serde_json::from_str(&self.data)?;
-                let task = Task::new(&event.task_id, &event.context_id)
-                    .with_status(event.status.clone());
+                let task =
+                    Task::new(&event.task_id, &event.context_id).with_status(event.status.clone());
                 Ok(ClientEvent::TaskUpdate {
                     task,
                     update: Some(UpdateEvent::Status(event)),
@@ -86,9 +86,7 @@ impl A2ASseEvent {
                     update: Some(UpdateEvent::Artifact(event)),
                 })
             }
-            SseEventType::Error => {
-                Err(A2AError::Stream(format!("Server error: {}", self.data)))
-            }
+            SseEventType::Error => Err(A2AError::Stream(format!("Server error: {}", self.data))),
             SseEventType::Unknown(t) => {
                 warn!("Unknown SSE event type: {}", t);
                 // Try to parse as a generic streaming result
@@ -128,13 +126,19 @@ impl A2ASseEvent {
 /// - `event: <type>` sets the event type
 /// - `data: <json>` provides the event data
 /// - Empty line terminates the event
-pub fn parse_sse_line(line: &str, current_event: &mut Option<String>, current_data: &mut String) -> Option<A2ASseEvent> {
+pub fn parse_sse_line(
+    line: &str,
+    current_event: &mut Option<String>,
+    current_data: &mut String,
+) -> Option<A2ASseEvent> {
     let line = line.trim();
-    
+
     if line.is_empty() {
         // Empty line means end of event
         if !current_data.is_empty() {
-            let event_type = current_event.take().unwrap_or_else(|| "message".to_string());
+            let event_type = current_event
+                .take()
+                .unwrap_or_else(|| "message".to_string());
             let data = std::mem::take(current_data);
             return Some(A2ASseEvent {
                 event_type: SseEventType::from(event_type.as_str()),
@@ -144,7 +148,7 @@ pub fn parse_sse_line(line: &str, current_event: &mut Option<String>, current_da
         }
         return None;
     }
-    
+
     if let Some(event_name) = line.strip_prefix("event:") {
         *current_event = Some(event_name.trim().to_string());
     } else if let Some(data) = line.strip_prefix("data:") {
@@ -157,7 +161,7 @@ pub fn parse_sse_line(line: &str, current_event: &mut Option<String>, current_da
     } else if let Some(id) = line.strip_prefix("id:") {
         debug!("SSE event ID: {}", id.trim());
     }
-    
+
     None
 }
 
@@ -201,7 +205,9 @@ where
         loop {
             match this.inner.as_mut().poll_next(cx) {
                 Poll::Ready(Some(Ok(line))) => {
-                    if let Some(event) = parse_sse_line(&line, this.current_event, this.current_data) {
+                    if let Some(event) =
+                        parse_sse_line(&line, this.current_event, this.current_data)
+                    {
                         match event.into_client_event() {
                             Ok(client_event) => return Poll::Ready(Some(Ok(client_event))),
                             Err(e) => return Poll::Ready(Some(Err(e))),
@@ -217,7 +223,10 @@ where
                     *this.closed = true;
                     // Process any remaining data
                     if !this.current_data.is_empty() {
-                        let event_type = this.current_event.take().unwrap_or_else(|| "message".to_string());
+                        let event_type = this
+                            .current_event
+                            .take()
+                            .unwrap_or_else(|| "message".to_string());
                         let data = std::mem::take(this.current_data);
                         let event = A2ASseEvent {
                             event_type: SseEventType::from(event_type.as_str()),
@@ -244,9 +253,18 @@ mod tests {
     #[test]
     fn test_sse_event_type_parsing() {
         assert_eq!(SseEventType::from("message"), SseEventType::Message);
-        assert_eq!(SseEventType::from("status-update"), SseEventType::StatusUpdate);
-        assert_eq!(SseEventType::from("statusUpdate"), SseEventType::StatusUpdate);
-        assert_eq!(SseEventType::from("artifact-update"), SseEventType::ArtifactUpdate);
+        assert_eq!(
+            SseEventType::from("status-update"),
+            SseEventType::StatusUpdate
+        );
+        assert_eq!(
+            SseEventType::from("statusUpdate"),
+            SseEventType::StatusUpdate
+        );
+        assert_eq!(
+            SseEventType::from("artifact-update"),
+            SseEventType::ArtifactUpdate
+        );
         assert_eq!(SseEventType::from("task"), SseEventType::Task);
         assert_eq!(SseEventType::from("error"), SseEventType::Error);
         assert_eq!(
@@ -265,7 +283,14 @@ mod tests {
         assert_eq!(current_event, Some("task".to_string()));
 
         // Set data
-        assert!(parse_sse_line("data: {\"id\":\"1\"}", &mut current_event, &mut current_data).is_none());
+        assert!(
+            parse_sse_line(
+                "data: {\"id\":\"1\"}",
+                &mut current_event,
+                &mut current_data
+            )
+            .is_none()
+        );
         assert_eq!(current_data, "{\"id\":\"1\"}");
 
         // Empty line triggers event

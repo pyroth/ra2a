@@ -12,8 +12,7 @@ use super::{
 };
 use crate::error::{JsonRpcError, Result};
 use crate::types::{
-    JsonRpcRequest, MessageSendParams, Task, TaskIdParams, TaskStatus,
-    TaskStatusUpdateEvent,
+    JsonRpcRequest, MessageSendParams, Task, TaskIdParams, TaskStatus, TaskStatusUpdateEvent,
 };
 
 /// Configuration for streaming handlers.
@@ -140,7 +139,10 @@ pub async fn handle_streaming_message<E: AgentExecutor + 'static>(
 /// Handles task resubscription requests.
 ///
 /// Allows clients to reconnect to an existing task's event stream.
-#[instrument(skip(state, queue_manager, request), fields(method = "tasks/resubscribe"))]
+#[instrument(
+    skip(state, queue_manager, request),
+    fields(method = "tasks/resubscribe")
+)]
 pub async fn handle_resubscribe<E: AgentExecutor>(
     state: &ServerState<E>,
     queue_manager: &QueueManager,

@@ -348,6 +348,61 @@ pub struct TaskArtifactUpdateEvent {
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
+/// A unified event type representing all possible streaming events.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum StreamingEvent {
+    /// A status update event.
+    StatusUpdate(TaskStatusUpdateEvent),
+    /// An artifact update event.
+    ArtifactUpdate(TaskArtifactUpdateEvent),
+}
+
+impl StreamingEvent {
+    /// Returns true if this is a final event.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::StatusUpdate(e) => e.r#final,
+            Self::ArtifactUpdate(_) => false,
+        }
+    }
+
+    /// Returns the task ID from this event.
+    pub fn task_id(&self) -> &str {
+        match self {
+            Self::StatusUpdate(e) => &e.task_id,
+            Self::ArtifactUpdate(e) => &e.task_id,
+        }
+    }
+
+    /// Returns the context ID from this event.
+    pub fn context_id(&self) -> &str {
+        match self {
+            Self::StatusUpdate(e) => &e.context_id,
+            Self::ArtifactUpdate(e) => &e.context_id,
+        }
+    }
+}
+
+/// Represents a historical status entry for state transition tracking.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TaskStatusHistoryEntry {
+    /// The status at this point in time.
+    pub status: TaskStatus,
+    /// ISO 8601 timestamp when this status was recorded.
+    pub timestamp: String,
+}
+
+impl TaskStatusHistoryEntry {
+    /// Creates a new history entry with current timestamp.
+    pub fn new(status: TaskStatus) -> Self {
+        Self {
+            status,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
 fn default_artifact_update_kind() -> String {
     "artifact-update".to_string()
 }

@@ -31,21 +31,32 @@
 //! }
 //! ```
 
+mod auth;
 mod card_resolver;
+mod client_task_manager;
 mod config;
+mod factory;
 mod http;
 mod middleware;
 mod sse;
 mod streaming;
 mod transport;
+pub mod transports;
 
+pub use auth::*;
 pub use card_resolver::*;
+pub use client_task_manager::*;
 pub use config::*;
+pub use factory::*;
 pub use http::*;
 pub use middleware::*;
 pub use sse::*;
 pub use streaming::*;
 pub use transport::*;
+pub use transports::{
+    ClientTransport, EventStream as TransportEventStream, JsonRpcTransport, RestTransport,
+    SendMessageResponse, StreamEvent, TransportOptions, TransportType,
+};
 
 use async_trait::async_trait;
 use futures::Stream;

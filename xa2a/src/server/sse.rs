@@ -3,8 +3,8 @@
 //! This module provides SSE-based streaming responses for real-time
 //! event delivery to A2A clients.
 
-use axum::response::sse::{Event as AxumSseEvent, KeepAlive, Sse};
 use axum::response::IntoResponse;
+use axum::response::sse::{Event as AxumSseEvent, KeepAlive, Sse};
 use futures::{Stream, StreamExt};
 use pin_project_lite::pin_project;
 use std::convert::Infallible;
@@ -26,27 +26,37 @@ fn event_to_sse_data(event: &Event, request_id: Option<&RequestId>) -> (String, 
         Event::StatusUpdate(e) => {
             let result = StreamingMessageResult::StatusUpdate(e.clone());
             let response = JsonRpcSuccessResponse::new(request_id.cloned(), result);
-            ("status-update".to_string(), serde_json::to_string(&response).unwrap_or_default())
+            (
+                "status-update".to_string(),
+                serde_json::to_string(&response).unwrap_or_default(),
+            )
         }
         Event::ArtifactUpdate(e) => {
             let result = StreamingMessageResult::ArtifactUpdate(e.clone());
             let response = JsonRpcSuccessResponse::new(request_id.cloned(), result);
-            ("artifact-update".to_string(), serde_json::to_string(&response).unwrap_or_default())
+            (
+                "artifact-update".to_string(),
+                serde_json::to_string(&response).unwrap_or_default(),
+            )
         }
         Event::Task(t) => {
             let result = StreamingMessageResult::Task(t.clone());
             let response = JsonRpcSuccessResponse::new(request_id.cloned(), result);
-            ("task".to_string(), serde_json::to_string(&response).unwrap_or_default())
+            (
+                "task".to_string(),
+                serde_json::to_string(&response).unwrap_or_default(),
+            )
         }
     }
 }
 
 /// Converts an `Event` to an Axum SSE event.
-fn event_to_axum_sse(event: &Event, request_id: Option<&RequestId>) -> Result<AxumSseEvent, Infallible> {
+fn event_to_axum_sse(
+    event: &Event,
+    request_id: Option<&RequestId>,
+) -> Result<AxumSseEvent, Infallible> {
     let (event_type, data) = event_to_sse_data(event, request_id);
-    Ok(AxumSseEvent::default()
-        .event(event_type)
-        .data(data))
+    Ok(AxumSseEvent::default().event(event_type).data(data))
 }
 
 /// Type alias for SSE response streams.
@@ -231,7 +241,9 @@ pub fn status_update_event(
     status: crate::types::TaskStatus,
     is_final: bool,
 ) -> Event {
-    Event::StatusUpdate(TaskStatusUpdateEvent::new(task_id, context_id, status, is_final))
+    Event::StatusUpdate(TaskStatusUpdateEvent::new(
+        task_id, context_id, status, is_final,
+    ))
 }
 
 /// Helper function to create an artifact update event.

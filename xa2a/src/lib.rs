@@ -16,10 +16,10 @@
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use a2a_rs::client::{A2AClient, Client};
+//! use xa2a::client::{A2AClient, Client};
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), a2a_rs::error::A2AError> {
+//! async fn main() -> Result<(), xa2a::error::A2AError> {
 //!     let client = A2AClient::new("https://agent.example.com")?;
 //!     let card = client.get_agent_card().await?;
 //!     println!("Connected to agent: {}", card.name);
@@ -47,8 +47,10 @@ mod utils;
 // Re-export commonly used types at crate root
 pub use error::{A2AError, Result};
 pub use types::{
-    AgentCapabilities, AgentCard, AgentSkill, Artifact, Message, Part, Role, Task, TaskState,
-    TaskStatus,
+    AgentCapabilities, AgentCard, AgentSkill, Artifact, ExtensionContext, ExtensionDeclaration,
+    Message, MessageSendParams, MessageStreamParams, Part, Role, StreamingEvent, Task,
+    TaskArtifactUpdateEvent, TaskIdParams, TaskPushNotificationConfig, TaskQueryParams,
+    TaskResubscriptionParams, TaskState, TaskStatus, TaskStatusUpdateEvent,
 };
 
 /// Protocol version supported by this SDK

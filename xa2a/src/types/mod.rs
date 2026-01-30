@@ -4,6 +4,7 @@
 //! including messages, tasks, agent cards, and JSON-RPC structures.
 
 mod agent;
+mod extensions;
 mod jsonrpc;
 mod message;
 mod oauth;
@@ -12,6 +13,7 @@ mod security;
 mod task;
 
 pub use agent::*;
+pub use extensions::*;
 pub use jsonrpc::*;
 pub use message::*;
 pub use oauth::*;
