@@ -1,0 +1,69 @@
+//! # A2A Rust SDK
+//!
+//! A Rust implementation of the Agent2Agent (A2A) Protocol SDK.
+//!
+//! This crate provides a complete implementation of the A2A protocol for building
+//! agentic applications that can communicate with each other following the
+//! [Agent2Agent Protocol](https://a2a-protocol.org).
+//!
+//! ## Features
+//!
+//! - **A2A Protocol Compliant**: Full implementation of the A2A specification
+//! - **Async/Await**: Built on tokio for high-performance async operations
+//! - **Type-Safe**: Strongly typed models with serde serialization
+//! - **Extensible**: Modular design with optional features
+//!
+//! ## Quick Start
+//!
+//! ```rust,no_run
+//! use a2a_rs::client::{A2AClient, Client};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), a2a_rs::error::A2AError> {
+//!     let client = A2AClient::new("https://agent.example.com")?;
+//!     let card = client.get_agent_card().await?;
+//!     println!("Connected to agent: {}", card.name);
+//!     Ok(())
+//! }
+//! ```
+
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+
+pub mod error;
+pub mod types;
+
+#[cfg(feature = "client")]
+#[cfg_attr(docsrs, doc(cfg(feature = "client")))]
+pub mod client;
+
+#[cfg(feature = "server")]
+#[cfg_attr(docsrs, doc(cfg(feature = "server")))]
+pub mod server;
+
+mod utils;
+
+// Re-export commonly used types at crate root
+pub use error::{A2AError, Result};
+pub use types::{
+    AgentCapabilities, AgentCard, AgentSkill, Artifact, Message, Part, Role, Task, TaskState,
+    TaskStatus,
+};
+
+/// Protocol version supported by this SDK
+pub const PROTOCOL_VERSION: &str = "0.3.0";
+
+/// SDK version
+pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_version_constants() {
+        assert!(!PROTOCOL_VERSION.is_empty());
+        assert!(!SDK_VERSION.is_empty());
+    }
+}
