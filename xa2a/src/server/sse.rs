@@ -47,6 +47,14 @@ fn event_to_sse_data(event: &Event, request_id: Option<&RequestId>) -> (String, 
                 serde_json::to_string(&response).unwrap_or_default(),
             )
         }
+        Event::Message(m) => {
+            let result = StreamingMessageResult::Message(m.clone());
+            let response = JsonRpcSuccessResponse::new(request_id.cloned(), result);
+            (
+                "message".to_string(),
+                serde_json::to_string(&response).unwrap_or_default(),
+            )
+        }
     }
 }
 

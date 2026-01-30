@@ -524,6 +524,268 @@ impl<R> JsonRpcResponse<R> {
     }
 }
 
+/// A discriminated union representing all possible JSON-RPC 2.0 requests
+/// supported by the A2A specification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "method", rename_all = "camelCase")]
+pub enum A2ARequest {
+    /// Send a message to the agent.
+    #[serde(rename = "message/send")]
+    SendMessage {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: MessageSendParams,
+    },
+    /// Stream a message to the agent.
+    #[serde(rename = "message/stream")]
+    StreamMessage {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: MessageSendParams,
+    },
+    /// Get a task by ID.
+    #[serde(rename = "tasks/get")]
+    GetTask {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: TaskQueryParams,
+    },
+    /// Cancel a task.
+    #[serde(rename = "tasks/cancel")]
+    CancelTask {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: TaskIdParams,
+    },
+    /// Resubscribe to a task's event stream.
+    #[serde(rename = "tasks/resubscribe")]
+    Resubscribe {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: TaskIdParams,
+    },
+    /// Set push notification configuration.
+    #[serde(rename = "tasks/pushNotificationConfig/set")]
+    SetPushNotificationConfig {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: TaskPushNotificationConfig,
+    },
+    /// Get push notification configuration.
+    #[serde(rename = "tasks/pushNotificationConfig/get")]
+    GetPushNotificationConfig {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: GetTaskPushNotificationConfigParams,
+    },
+    /// List push notification configurations.
+    #[serde(rename = "tasks/pushNotificationConfig/list")]
+    ListPushNotificationConfig {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: ListTaskPushNotificationConfigParams,
+    },
+    /// Delete push notification configuration.
+    #[serde(rename = "tasks/pushNotificationConfig/delete")]
+    DeletePushNotificationConfig {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+        /// Request parameters.
+        params: DeleteTaskPushNotificationConfigParams,
+    },
+    /// Get authenticated extended agent card.
+    #[serde(rename = "agent/getAuthenticatedExtendedCard")]
+    GetAuthenticatedExtendedCard {
+        /// JSON-RPC version.
+        jsonrpc: String,
+        /// Request ID.
+        id: RequestId,
+    },
+}
+
+impl A2ARequest {
+    /// Returns the method name of this request.
+    pub fn method(&self) -> &'static str {
+        match self {
+            Self::SendMessage { .. } => "message/send",
+            Self::StreamMessage { .. } => "message/stream",
+            Self::GetTask { .. } => "tasks/get",
+            Self::CancelTask { .. } => "tasks/cancel",
+            Self::Resubscribe { .. } => "tasks/resubscribe",
+            Self::SetPushNotificationConfig { .. } => "tasks/pushNotificationConfig/set",
+            Self::GetPushNotificationConfig { .. } => "tasks/pushNotificationConfig/get",
+            Self::ListPushNotificationConfig { .. } => "tasks/pushNotificationConfig/list",
+            Self::DeletePushNotificationConfig { .. } => "tasks/pushNotificationConfig/delete",
+            Self::GetAuthenticatedExtendedCard { .. } => "agent/getAuthenticatedExtendedCard",
+        }
+    }
+
+    /// Returns the request ID.
+    pub fn id(&self) -> &RequestId {
+        match self {
+            Self::SendMessage { id, .. }
+            | Self::StreamMessage { id, .. }
+            | Self::GetTask { id, .. }
+            | Self::CancelTask { id, .. }
+            | Self::Resubscribe { id, .. }
+            | Self::SetPushNotificationConfig { id, .. }
+            | Self::GetPushNotificationConfig { id, .. }
+            | Self::ListPushNotificationConfig { id, .. }
+            | Self::DeletePushNotificationConfig { id, .. }
+            | Self::GetAuthenticatedExtendedCard { id, .. } => id,
+        }
+    }
+}
+
+/// A discriminated union representing all possible successful JSON-RPC 2.0
+/// responses for the A2A specification methods.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum A2ASuccessResponse {
+    /// Response for message/send.
+    SendMessage(SendMessageSuccessResponse),
+    /// Response for message/stream.
+    StreamMessage(SendStreamingMessageSuccessResponse),
+    /// Response for tasks/get.
+    GetTask(GetTaskSuccessResponse),
+    /// Response for tasks/cancel.
+    CancelTask(CancelTaskSuccessResponse),
+    /// Response for tasks/pushNotificationConfig/set.
+    SetPushNotificationConfig(SetTaskPushNotificationConfigSuccessResponse),
+    /// Response for tasks/pushNotificationConfig/get.
+    GetPushNotificationConfig(GetTaskPushNotificationConfigSuccessResponse),
+    /// Response for tasks/pushNotificationConfig/list.
+    ListPushNotificationConfig(ListTaskPushNotificationConfigSuccessResponse),
+    /// Response for tasks/pushNotificationConfig/delete.
+    DeletePushNotificationConfig(DeleteTaskPushNotificationConfigSuccessResponse),
+    /// Response for agent/getAuthenticatedExtendedCard.
+    GetAuthenticatedExtendedCard(GetAuthenticatedExtendedCardSuccessResponse),
+}
+
+/// A discriminated union representing all possible JSON-RPC 2.0 responses
+/// (success or error) for the A2A specification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum A2AResponse {
+    /// A successful response.
+    Success(A2ASuccessResponse),
+    /// An error response.
+    Error(JsonRpcErrorResponse),
+}
+
+impl A2AResponse {
+    /// Returns true if this is a success response.
+    #[inline]
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Success(_))
+    }
+
+    /// Returns true if this is an error response.
+    #[inline]
+    pub fn is_error(&self) -> bool {
+        matches!(self, Self::Error(_))
+    }
+
+    /// Returns the error if this is an error response.
+    pub fn error(&self) -> Option<&JsonRpcError> {
+        match self {
+            Self::Error(e) => Some(&e.error),
+            _ => None,
+        }
+    }
+}
+
+/// Server-Sent Event wrapper for streaming responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SseEvent {
+    /// The event type (optional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event: Option<String>,
+    /// The event data (JSON string).
+    pub data: String,
+    /// Event ID for reconnection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Retry interval in milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry: Option<u64>,
+}
+
+impl SseEvent {
+    /// Creates a new SSE event with data.
+    pub fn new(data: impl Into<String>) -> Self {
+        Self {
+            event: None,
+            data: data.into(),
+            id: None,
+            retry: None,
+        }
+    }
+
+    /// Creates an SSE event from a serializable value.
+    pub fn from_json<T: Serialize>(value: &T) -> Result<Self, serde_json::Error> {
+        Ok(Self::new(serde_json::to_string(value)?))
+    }
+
+    /// Sets the event type.
+    pub fn with_event(mut self, event: impl Into<String>) -> Self {
+        self.event = Some(event.into());
+        self
+    }
+
+    /// Sets the event ID.
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// Formats the event as SSE wire format.
+    pub fn to_sse_string(&self) -> String {
+        let mut result = String::new();
+        if let Some(ref event) = self.event {
+            result.push_str(&format!("event: {}\n", event));
+        }
+        if let Some(ref id) = self.id {
+            result.push_str(&format!("id: {}\n", id));
+        }
+        if let Some(retry) = self.retry {
+            result.push_str(&format!("retry: {}\n", retry));
+        }
+        // Handle multi-line data
+        for line in self.data.lines() {
+            result.push_str(&format!("data: {}\n", line));
+        }
+        result.push('\n');
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -558,5 +820,25 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"jsonrpc\":\"2.0\""));
         assert!(json.contains("\"result\""));
+    }
+
+    #[test]
+    fn test_sse_event_formatting() {
+        let event = SseEvent::new(r#"{"test": true}"#)
+            .with_event("message")
+            .with_id("123");
+        let sse_str = event.to_sse_string();
+        assert!(sse_str.contains("event: message\n"));
+        assert!(sse_str.contains("id: 123\n"));
+        assert!(sse_str.contains("data: {\"test\": true}\n"));
+    }
+
+    #[test]
+    fn test_a2a_response_is_error() {
+        let error = JsonRpcError::task_not_found("test-123");
+        let response = A2AResponse::Error(JsonRpcErrorResponse::new(None, error));
+        assert!(response.is_error());
+        assert!(!response.is_success());
+        assert!(response.error().is_some());
     }
 }

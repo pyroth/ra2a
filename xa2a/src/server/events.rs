@@ -1,13 +1,15 @@
 //! Event handling components for the A2A server.
 //!
 //! Provides event queues for streaming task updates to clients.
+//! This module implements a broadcast-based event system similar to Python's
+//! `EventQueue` and `QueueManager` for managing streaming responses.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 
 use crate::error::{A2AError, Result};
-use crate::types::{Task, TaskArtifactUpdateEvent, TaskStatusUpdateEvent};
+use crate::types::{Message, Task, TaskArtifactUpdateEvent, TaskStatusUpdateEvent};
 
 /// An event that can be sent to clients.
 #[derive(Debug, Clone)]
@@ -18,6 +20,48 @@ pub enum Event {
     ArtifactUpdate(TaskArtifactUpdateEvent),
     /// A complete task snapshot.
     Task(Task),
+    /// A message response.
+    Message(Message),
+}
+
+impl Event {
+    /// Returns the task ID from this event, if available.
+    pub fn task_id(&self) -> Option<&str> {
+        match self {
+            Self::StatusUpdate(e) => Some(&e.task_id),
+            Self::ArtifactUpdate(e) => Some(&e.task_id),
+            Self::Task(t) => Some(&t.id),
+            Self::Message(m) => m.task_id.as_deref(),
+        }
+    }
+
+    /// Returns true if this is a final event.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::StatusUpdate(e) => e.r#final,
+            _ => false,
+        }
+    }
+
+    /// Creates an event from a task status update.
+    pub fn status_update(event: TaskStatusUpdateEvent) -> Self {
+        Self::StatusUpdate(event)
+    }
+
+    /// Creates an event from an artifact update.
+    pub fn artifact_update(event: TaskArtifactUpdateEvent) -> Self {
+        Self::ArtifactUpdate(event)
+    }
+
+    /// Creates an event from a task.
+    pub fn task(task: Task) -> Self {
+        Self::Task(task)
+    }
+
+    /// Creates an event from a message.
+    pub fn message(message: Message) -> Self {
+        Self::Message(message)
+    }
 }
 
 /// A queue for sending events to a specific task's subscribers.

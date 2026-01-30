@@ -103,6 +103,8 @@ impl<E: AgentExecutor + 'static> A2AServer<E> {
             .route("/.well-known/agent.json", get(handle_agent_card::<E>))
             // Main JSON-RPC endpoint
             .route("/", post(handle_jsonrpc::<E>))
+            // SSE streaming endpoint
+            .route("/stream", post(handle_sse_stream::<E>))
             // Health check endpoint
             .route("/health", get(handle_health))
             .with_state(state);
@@ -191,6 +193,95 @@ async fn handle_jsonrpc<E: AgentExecutor>(
 /// Handler for the health check endpoint.
 async fn handle_health() -> &'static str {
     "OK"
+}
+
+/// Handler for the SSE streaming endpoint.
+///
+/// This endpoint handles `message/stream` requests via Server-Sent Events.
+async fn handle_sse_stream<E: AgentExecutor + 'static>(
+    State(state): State<ServerState<E>>,
+    body: String,
+) -> Response {
+    use super::ExecutionContext;
+    use crate::types::{
+        JsonRpcRequest, JsonRpcSuccessResponse, MessageSendParams, StreamingMessageResult,
+    };
+    use axum::response::IntoResponse;
+    use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
+
+    // Parse the request
+    let request: JsonRpcRequest<MessageSendParams> = match serde_json::from_str(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(r#"{{"error":"{}"}}"#, e)))
+                .unwrap();
+        }
+    };
+
+    let params = match request.params {
+        Some(p) => p,
+        None => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(r#"{"error":"Missing params"}"#))
+                .unwrap();
+        }
+    };
+
+    let message = params.message;
+    let request_id = request.id;
+
+    // Determine task_id and context_id
+    let (task_id, context_id) = match (&message.task_id, &message.context_id) {
+        (Some(tid), Some(cid)) => (tid.clone(), cid.clone()),
+        (Some(tid), None) => {
+            if let Some(task) = state.get_task(tid).await {
+                (tid.clone(), task.context_id)
+            } else {
+                (tid.clone(), uuid::Uuid::new_v4().to_string())
+            }
+        }
+        _ => (
+            uuid::Uuid::new_v4().to_string(),
+            uuid::Uuid::new_v4().to_string(),
+        ),
+    };
+
+    // Execute the agent
+    let ctx = ExecutionContext::new(&task_id, &context_id);
+    let executor = state.executor.clone();
+
+    // Create a stream that executes and emits events
+    let stream = async_stream::stream! {
+        match executor.execute(&ctx, &message).await {
+            Ok(task) => {
+                let result = StreamingMessageResult::Task(task);
+                let response = JsonRpcSuccessResponse::new(Some(request_id.clone()), result);
+                let data = serde_json::to_string(&response).unwrap_or_default();
+                yield Ok::<_, std::convert::Infallible>(
+                    SseEvent::default().event("task").data(data)
+                );
+            }
+            Err(e) => {
+                let error_data = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32603,
+                        "message": e.to_string()
+                    },
+                    "id": request_id
+                });
+                yield Ok(SseEvent::default().event("error").data(error_data.to_string()));
+            }
+        }
+    };
+
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 
 /// Builder for creating an A2A server.

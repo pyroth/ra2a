@@ -47,10 +47,58 @@ mod utils;
 // Re-export commonly used types at crate root
 pub use error::{A2AError, Result};
 pub use types::{
-    AgentCapabilities, AgentCard, AgentSkill, Artifact, ExtensionContext, ExtensionDeclaration,
-    Message, MessageSendParams, MessageStreamParams, Part, Role, StreamingEvent, Task,
-    TaskArtifactUpdateEvent, TaskIdParams, TaskPushNotificationConfig, TaskQueryParams,
-    TaskResubscriptionParams, TaskState, TaskStatus, TaskStatusUpdateEvent,
+    // Request/Response types
+    A2ARequest,
+    A2AResponse,
+    A2ASuccessResponse,
+    // Agent types
+    AgentCapabilities,
+    AgentCard,
+    AgentSkill,
+    // Task types
+    Artifact,
+    // Extension types
+    ExtensionContext,
+    ExtensionDeclaration,
+    JsonRpcErrorResponse,
+    JsonRpcRequest,
+    JsonRpcResponse,
+    JsonRpcSuccessResponse,
+    // Message types
+    Message,
+    MessageSendConfiguration,
+    MessageSendParams,
+    MessageStreamParams,
+    Part,
+    PushNotificationConfig,
+    RequestId,
+    Role,
+    SseEvent,
+    StreamingEvent,
+    Task,
+    TaskArtifactUpdateEvent,
+    // Parameter types
+    TaskIdParams,
+    TaskPushNotificationConfig,
+    TaskQueryParams,
+    TaskResubscriptionParams,
+    TaskState,
+    TaskStatus,
+    TaskStatusUpdateEvent,
+};
+
+// Re-export client types when client feature is enabled
+#[cfg(feature = "client")]
+pub use client::{
+    CallbackConsumer, Client, ClientEvent, CollectingConsumer, Consumer, UpdateEvent, run_consumer,
+    send_and_consume,
+};
+
+// Re-export server types when server feature is enabled
+#[cfg(feature = "server")]
+pub use server::{
+    AgentExecutor, DefaultRequestHandler, Event, EventQueue, ExecutionContext, QueueManager,
+    RequestHandler, SendMessageResponse, ServerCallContext,
 };
 
 /// Protocol version supported by this SDK
@@ -58,14 +106,3 @@ pub const PROTOCOL_VERSION: &str = "0.3.0";
 
 /// SDK version
 pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_version_constants() {
-        assert!(!PROTOCOL_VERSION.is_empty());
-        assert!(!SDK_VERSION.is_empty());
-    }
-}

@@ -161,6 +161,7 @@ impl PushNotificationConfigStore for InMemoryPushNotificationConfigStore {
 /// SQL-based task store using SQLx (requires `sql` feature).
 #[cfg(feature = "sql")]
 pub mod sql {
+    #![allow(unused_imports)]
     use super::*;
     use sqlx::{Database, FromRow, Pool};
 
@@ -195,12 +196,19 @@ pub mod sql {
     /// Row representation for tasks in SQL.
     #[derive(Debug, Clone)]
     pub struct TaskRow {
+        /// The unique task identifier.
         pub id: String,
+        /// The context identifier for the task.
         pub context_id: String,
+        /// The task state as a string (e.g., "submitted", "working").
         pub status_state: String,
+        /// Optional status message serialized as JSON.
         pub status_message: Option<String>,
+        /// Task history serialized as JSON.
         pub history: Option<String>,
+        /// Task artifacts serialized as JSON.
         pub artifacts: Option<String>,
+        /// Task metadata serialized as JSON.
         pub metadata: Option<String>,
     }
 

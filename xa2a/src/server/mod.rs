@@ -41,10 +41,12 @@
 mod app;
 mod context;
 mod context_builder;
+mod default_handler;
 mod events;
 mod handler;
 mod id_generator;
 mod push_notification;
+mod request_handler;
 mod result_aggregator;
 mod sse;
 mod streaming_handler;
@@ -54,10 +56,12 @@ mod task_store;
 pub use app::*;
 pub use context::*;
 pub use context_builder::*;
+pub use default_handler::*;
 pub use events::*;
 pub use handler::*;
 pub use id_generator::*;
 pub use push_notification::*;
+pub use request_handler::*;
 pub use result_aggregator::*;
 pub use sse::*;
 pub use streaming_handler::*;
@@ -65,13 +69,19 @@ pub use task_manager::*;
 pub use task_store::*;
 
 use async_trait::async_trait;
+use futures::Stream;
+use std::pin::Pin;
 
 use crate::error::Result;
 use crate::types::{AgentCard, Message, Task};
 
+/// A boxed stream of events for streaming execution.
+pub type ExecutionEventStream = Pin<Box<dyn Stream<Item = Result<Event>> + Send>>;
+
 /// Trait for implementing agent execution logic.
 ///
 /// Implement this trait to define how your agent processes messages and generates responses.
+/// For streaming support, also implement the `execute_streaming` method.
 #[async_trait]
 pub trait AgentExecutor: Send + Sync {
     /// Processes an incoming message and returns the updated task.
@@ -79,6 +89,22 @@ pub trait AgentExecutor: Send + Sync {
     /// This method is called when a new message is received from a client.
     /// The implementation should process the message and update the task status accordingly.
     async fn execute(&self, ctx: &ExecutionContext, message: &Message) -> Result<Task>;
+
+    /// Processes an incoming message and returns a stream of events.
+    ///
+    /// This method is called for streaming requests (`message/stream`).
+    /// The default implementation wraps the non-streaming `execute` method.
+    ///
+    /// Override this method to provide true streaming support with incremental updates.
+    async fn execute_streaming(
+        &self,
+        ctx: &ExecutionContext,
+        message: &Message,
+    ) -> Result<ExecutionEventStream> {
+        let task = self.execute(ctx, message).await?;
+        let stream = futures::stream::once(async move { Ok(Event::Task(task)) });
+        Ok(Box::pin(stream))
+    }
 
     /// Cancels an ongoing task.
     ///
@@ -88,6 +114,13 @@ pub trait AgentExecutor: Send + Sync {
 
     /// Returns the agent card describing this agent's capabilities.
     fn agent_card(&self) -> &AgentCard;
+
+    /// Returns true if this executor supports streaming.
+    ///
+    /// Override this to return `true` if you implement `execute_streaming`.
+    fn supports_streaming(&self) -> bool {
+        self.agent_card().supports_streaming()
+    }
 }
 
 /// Context passed to the executor during message processing.
