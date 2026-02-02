@@ -180,37 +180,69 @@ impl PushNotificationConfigStore for InMemoryPushNotificationConfigStore {
 }
 
 /// SQL-based task store using SQLx (requires `sql` feature).
-#[cfg(feature = "sql")]
+///
+/// This module provides database-backed implementations of `TaskStore` and
+/// `PushNotificationConfigStore` using SQLx for SQLite, PostgreSQL, and MySQL.
+#[cfg(any(feature = "sqlite", feature = "postgresql", feature = "mysql"))]
 pub mod sql {
-    #![allow(unused_imports)]
     use super::*;
-    use sqlx::{Database, FromRow, Pool};
+    use crate::types::{PushNotificationConfig, TaskState, TaskStatus};
 
-    /// SQL table schema for tasks.
-    pub const TASK_TABLE_SCHEMA: &str = r#"
+    /// SQL table schema for tasks (SQLite compatible).
+    pub const TASK_TABLE_SCHEMA_SQLITE: &str = r#"
         CREATE TABLE IF NOT EXISTS a2a_tasks (
             id TEXT PRIMARY KEY,
             context_id TEXT NOT NULL,
             status_state TEXT NOT NULL,
             status_message TEXT,
+            status_timestamp TEXT,
             history TEXT,
             artifacts TEXT,
             metadata TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     "#;
 
-    /// SQL table schema for push notification configs.
-    pub const PUSH_CONFIG_TABLE_SCHEMA: &str = r#"
-        CREATE TABLE IF NOT EXISTS a2a_push_configs (
+    /// SQL table schema for tasks (PostgreSQL compatible).
+    pub const TASK_TABLE_SCHEMA_POSTGRES: &str = r#"
+        CREATE TABLE IF NOT EXISTS a2a_tasks (
             id TEXT PRIMARY KEY,
+            context_id TEXT NOT NULL,
+            status_state TEXT NOT NULL,
+            status_message TEXT,
+            status_timestamp TEXT,
+            history JSONB,
+            artifacts JSONB,
+            metadata JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    "#;
+
+    /// SQL table schema for push notification configs (SQLite compatible).
+    pub const PUSH_CONFIG_TABLE_SCHEMA_SQLITE: &str = r#"
+        CREATE TABLE IF NOT EXISTS a2a_push_configs (
+            id TEXT NOT NULL,
             task_id TEXT NOT NULL,
             url TEXT NOT NULL,
             token TEXT,
             authentication TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (task_id) REFERENCES a2a_tasks(id) ON DELETE CASCADE
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, id)
+        )
+    "#;
+
+    /// SQL table schema for push notification configs (PostgreSQL compatible).
+    pub const PUSH_CONFIG_TABLE_SCHEMA_POSTGRES: &str = r#"
+        CREATE TABLE IF NOT EXISTS a2a_push_configs (
+            id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            url TEXT NOT NULL,
+            token TEXT,
+            authentication JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (task_id, id)
         )
     "#;
 
@@ -225,6 +257,8 @@ pub mod sql {
         pub status_state: String,
         /// Optional status message serialized as JSON.
         pub status_message: Option<String>,
+        /// Status timestamp in ISO 8601 format.
+        pub status_timestamp: Option<String>,
         /// Task history serialized as JSON.
         pub history: Option<String>,
         /// Task artifacts serialized as JSON.
@@ -239,45 +273,35 @@ pub mod sql {
             Self {
                 id: task.id.clone(),
                 context_id: task.context_id.clone(),
-                status_state: format!("{:?}", task.status.state),
+                status_state: task_state_to_string(task.status.state),
                 status_message: task
                     .status
                     .message
                     .as_ref()
-                    .map(|m| serde_json::to_string(m).unwrap_or_default()),
+                    .and_then(|m| serde_json::to_string(m).ok()),
+                status_timestamp: task.status.timestamp.clone(),
                 history: task
                     .history
                     .as_ref()
-                    .map(|h| serde_json::to_string(h).unwrap_or_default()),
+                    .and_then(|h| serde_json::to_string(h).ok()),
                 artifacts: task
                     .artifacts
                     .as_ref()
-                    .map(|a| serde_json::to_string(a).unwrap_or_default()),
+                    .and_then(|a| serde_json::to_string(a).ok()),
                 metadata: task
                     .metadata
                     .as_ref()
-                    .map(|m| serde_json::to_string(m).unwrap_or_default()),
+                    .and_then(|m| serde_json::to_string(m).ok()),
             }
         }
 
         /// Converts a TaskRow back to a Task.
         pub fn to_task(&self) -> Result<Task> {
-            use crate::types::{TaskState, TaskStatus};
-
-            let state = match self.status_state.as_str() {
-                "Submitted" => TaskState::Submitted,
-                "Working" => TaskState::Working,
-                "InputRequired" => TaskState::InputRequired,
-                "Completed" => TaskState::Completed,
-                "Canceled" => TaskState::Canceled,
-                "Failed" => TaskState::Failed,
-                "Rejected" => TaskState::Rejected,
-                "AuthRequired" => TaskState::AuthRequired,
-                _ => TaskState::Unknown,
-            };
+            let state = string_to_task_state(&self.status_state);
 
             let mut task = Task::new(&self.id, &self.context_id);
             task.status = TaskStatus::new(state);
+            task.status.timestamp = self.status_timestamp.clone();
 
             if let Some(ref msg_json) = self.status_message {
                 task.status.message = serde_json::from_str(msg_json).ok();
@@ -298,6 +322,593 @@ pub mod sql {
             Ok(task)
         }
     }
+
+    /// Row representation for push notification configs in SQL.
+    #[derive(Debug, Clone)]
+    pub struct PushConfigRow {
+        /// The config identifier.
+        pub id: String,
+        /// The task identifier.
+        pub task_id: String,
+        /// The callback URL.
+        pub url: String,
+        /// Optional token.
+        pub token: Option<String>,
+        /// Authentication info serialized as JSON.
+        pub authentication: Option<String>,
+    }
+
+    impl PushConfigRow {
+        /// Converts a PushNotificationConfig to a row.
+        pub fn from_config(task_id: &str, config: &PushNotificationConfig) -> Self {
+            Self {
+                id: config
+                    .id
+                    .clone()
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                task_id: task_id.to_string(),
+                url: config.url.clone(),
+                token: config.token.clone(),
+                authentication: config
+                    .authentication
+                    .as_ref()
+                    .and_then(|a| serde_json::to_string(a).ok()),
+            }
+        }
+
+        /// Converts a row back to a PushNotificationConfig.
+        pub fn to_config(&self) -> PushNotificationConfig {
+            PushNotificationConfig {
+                id: Some(self.id.clone()),
+                url: self.url.clone(),
+                token: self.token.clone(),
+                authentication: self
+                    .authentication
+                    .as_ref()
+                    .and_then(|a| serde_json::from_str(a).ok()),
+            }
+        }
+    }
+
+    /// Converts TaskState to a kebab-case string for storage.
+    fn task_state_to_string(state: TaskState) -> String {
+        match state {
+            TaskState::Submitted => "submitted",
+            TaskState::Working => "working",
+            TaskState::InputRequired => "input-required",
+            TaskState::Completed => "completed",
+            TaskState::Canceled => "canceled",
+            TaskState::Failed => "failed",
+            TaskState::Rejected => "rejected",
+            TaskState::AuthRequired => "auth-required",
+            TaskState::Unknown => "unknown",
+        }
+        .to_string()
+    }
+
+    /// Converts a string to TaskState.
+    fn string_to_task_state(s: &str) -> TaskState {
+        match s {
+            "submitted" => TaskState::Submitted,
+            "working" => TaskState::Working,
+            "input-required" => TaskState::InputRequired,
+            "completed" => TaskState::Completed,
+            "canceled" => TaskState::Canceled,
+            "failed" => TaskState::Failed,
+            "rejected" => TaskState::Rejected,
+            "auth-required" => TaskState::AuthRequired,
+            _ => TaskState::Unknown,
+        }
+    }
+
+    /// SQLite-based task store implementation.
+    #[cfg(feature = "sqlite")]
+    pub mod sqlite {
+        use super::*;
+        use sqlx::{Row, SqlitePool};
+
+        /// SQLite task store.
+        #[derive(Debug, Clone)]
+        pub struct SqliteTaskStore {
+            pool: SqlitePool,
+        }
+
+        impl SqliteTaskStore {
+            /// Creates a new SQLite task store with the given pool.
+            pub fn new(pool: SqlitePool) -> Self {
+                Self { pool }
+            }
+
+            /// Creates the required tables if they don't exist.
+            pub async fn initialize(&self) -> Result<()> {
+                sqlx::query(TASK_TABLE_SCHEMA_SQLITE)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+        }
+
+        #[async_trait]
+        impl TaskStore for SqliteTaskStore {
+            async fn save(&self, task: &Task, _context: Option<&RequestContext>) -> Result<()> {
+                let row = TaskRow::from_task(task);
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO a2a_tasks (id, context_id, status_state, status_message, status_timestamp, history, artifacts, metadata, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                        context_id = excluded.context_id,
+                        status_state = excluded.status_state,
+                        status_message = excluded.status_message,
+                        status_timestamp = excluded.status_timestamp,
+                        history = excluded.history,
+                        artifacts = excluded.artifacts,
+                        metadata = excluded.metadata,
+                        updated_at = CURRENT_TIMESTAMP
+                    "#,
+                )
+                .bind(&row.id)
+                .bind(&row.context_id)
+                .bind(&row.status_state)
+                .bind(&row.status_message)
+                .bind(&row.status_timestamp)
+                .bind(&row.history)
+                .bind(&row.artifacts)
+                .bind(&row.metadata)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                Ok(())
+            }
+
+            async fn get(
+                &self,
+                task_id: &str,
+                _context: Option<&RequestContext>,
+            ) -> Result<Option<Task>> {
+                let row = sqlx::query(
+                    r#"
+                    SELECT id, context_id, status_state, status_message, status_timestamp, history, artifacts, metadata
+                    FROM a2a_tasks WHERE id = ?
+                    "#,
+                )
+                .bind(task_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                match row {
+                    Some(r) => {
+                        let task_row = TaskRow {
+                            id: r.get("id"),
+                            context_id: r.get("context_id"),
+                            status_state: r.get("status_state"),
+                            status_message: r.get("status_message"),
+                            status_timestamp: r.get("status_timestamp"),
+                            history: r.get("history"),
+                            artifacts: r.get("artifacts"),
+                            metadata: r.get("metadata"),
+                        };
+                        Ok(Some(task_row.to_task()?))
+                    }
+                    None => Ok(None),
+                }
+            }
+
+            async fn delete(&self, task_id: &str, _context: Option<&RequestContext>) -> Result<()> {
+                sqlx::query("DELETE FROM a2a_tasks WHERE id = ?")
+                    .bind(task_id)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+
+            async fn list_ids(&self, _context: Option<&RequestContext>) -> Result<Vec<String>> {
+                let rows = sqlx::query("SELECT id FROM a2a_tasks")
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                Ok(rows.iter().map(|r| r.get("id")).collect())
+            }
+        }
+
+        /// SQLite push notification config store.
+        #[derive(Debug, Clone)]
+        pub struct SqlitePushNotificationConfigStore {
+            pool: SqlitePool,
+        }
+
+        impl SqlitePushNotificationConfigStore {
+            /// Creates a new SQLite push config store.
+            pub fn new(pool: SqlitePool) -> Self {
+                Self { pool }
+            }
+
+            /// Creates the required tables if they don't exist.
+            pub async fn initialize(&self) -> Result<()> {
+                sqlx::query(PUSH_CONFIG_TABLE_SCHEMA_SQLITE)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+        }
+
+        #[async_trait]
+        impl PushNotificationConfigStore for SqlitePushNotificationConfigStore {
+            async fn save(&self, task_id: &str, config: &PushNotificationConfig) -> Result<()> {
+                let row = PushConfigRow::from_config(task_id, config);
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO a2a_push_configs (id, task_id, url, token, authentication)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(task_id, id) DO UPDATE SET
+                        url = excluded.url,
+                        token = excluded.token,
+                        authentication = excluded.authentication
+                    "#,
+                )
+                .bind(&row.id)
+                .bind(&row.task_id)
+                .bind(&row.url)
+                .bind(&row.token)
+                .bind(&row.authentication)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                Ok(())
+            }
+
+            async fn get(
+                &self,
+                task_id: &str,
+                config_id: Option<&str>,
+            ) -> Result<Option<PushNotificationConfig>> {
+                let row = match config_id {
+                    Some(cid) => {
+                        sqlx::query(
+                            "SELECT id, task_id, url, token, authentication FROM a2a_push_configs WHERE task_id = ? AND id = ?",
+                        )
+                        .bind(task_id)
+                        .bind(cid)
+                        .fetch_optional(&self.pool)
+                        .await
+                    }
+                    None => {
+                        sqlx::query(
+                            "SELECT id, task_id, url, token, authentication FROM a2a_push_configs WHERE task_id = ? LIMIT 1",
+                        )
+                        .bind(task_id)
+                        .fetch_optional(&self.pool)
+                        .await
+                    }
+                }
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                match row {
+                    Some(r) => {
+                        let config_row = PushConfigRow {
+                            id: r.get("id"),
+                            task_id: r.get("task_id"),
+                            url: r.get("url"),
+                            token: r.get("token"),
+                            authentication: r.get("authentication"),
+                        };
+                        Ok(Some(config_row.to_config()))
+                    }
+                    None => Ok(None),
+                }
+            }
+
+            async fn list(&self, task_id: &str) -> Result<Vec<PushNotificationConfig>> {
+                let rows = sqlx::query(
+                    "SELECT id, task_id, url, token, authentication FROM a2a_push_configs WHERE task_id = ?",
+                )
+                .bind(task_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                Ok(rows
+                    .iter()
+                    .map(|r| {
+                        PushConfigRow {
+                            id: r.get("id"),
+                            task_id: r.get("task_id"),
+                            url: r.get("url"),
+                            token: r.get("token"),
+                            authentication: r.get("authentication"),
+                        }
+                        .to_config()
+                    })
+                    .collect())
+            }
+
+            async fn delete(&self, task_id: &str, config_id: &str) -> Result<()> {
+                sqlx::query("DELETE FROM a2a_push_configs WHERE task_id = ? AND id = ?")
+                    .bind(task_id)
+                    .bind(config_id)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+
+            async fn delete_all(&self, task_id: &str) -> Result<()> {
+                sqlx::query("DELETE FROM a2a_push_configs WHERE task_id = ?")
+                    .bind(task_id)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+        }
+    }
+
+    /// PostgreSQL-based task store implementation.
+    #[cfg(feature = "postgresql")]
+    pub mod postgres {
+        use super::*;
+        use sqlx::{PgPool, Row};
+
+        /// PostgreSQL task store.
+        #[derive(Debug, Clone)]
+        pub struct PostgresTaskStore {
+            pool: PgPool,
+        }
+
+        impl PostgresTaskStore {
+            /// Creates a new PostgreSQL task store with the given pool.
+            pub fn new(pool: PgPool) -> Self {
+                Self { pool }
+            }
+
+            /// Creates the required tables if they don't exist.
+            pub async fn initialize(&self) -> Result<()> {
+                sqlx::query(TASK_TABLE_SCHEMA_POSTGRES)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+        }
+
+        #[async_trait]
+        impl TaskStore for PostgresTaskStore {
+            async fn save(&self, task: &Task, _context: Option<&RequestContext>) -> Result<()> {
+                let row = TaskRow::from_task(task);
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO a2a_tasks (id, context_id, status_state, status_message, status_timestamp, history, artifacts, metadata, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                    ON CONFLICT(id) DO UPDATE SET
+                        context_id = EXCLUDED.context_id,
+                        status_state = EXCLUDED.status_state,
+                        status_message = EXCLUDED.status_message,
+                        status_timestamp = EXCLUDED.status_timestamp,
+                        history = EXCLUDED.history,
+                        artifacts = EXCLUDED.artifacts,
+                        metadata = EXCLUDED.metadata,
+                        updated_at = NOW()
+                    "#,
+                )
+                .bind(&row.id)
+                .bind(&row.context_id)
+                .bind(&row.status_state)
+                .bind(&row.status_message)
+                .bind(&row.status_timestamp)
+                .bind(&row.history)
+                .bind(&row.artifacts)
+                .bind(&row.metadata)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                Ok(())
+            }
+
+            async fn get(
+                &self,
+                task_id: &str,
+                _context: Option<&RequestContext>,
+            ) -> Result<Option<Task>> {
+                let row = sqlx::query(
+                    r#"
+                    SELECT id, context_id, status_state, status_message, status_timestamp, history::TEXT, artifacts::TEXT, metadata::TEXT
+                    FROM a2a_tasks WHERE id = $1
+                    "#,
+                )
+                .bind(task_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                match row {
+                    Some(r) => {
+                        let task_row = TaskRow {
+                            id: r.get("id"),
+                            context_id: r.get("context_id"),
+                            status_state: r.get("status_state"),
+                            status_message: r.get("status_message"),
+                            status_timestamp: r.get("status_timestamp"),
+                            history: r.get("history"),
+                            artifacts: r.get("artifacts"),
+                            metadata: r.get("metadata"),
+                        };
+                        Ok(Some(task_row.to_task()?))
+                    }
+                    None => Ok(None),
+                }
+            }
+
+            async fn delete(&self, task_id: &str, _context: Option<&RequestContext>) -> Result<()> {
+                sqlx::query("DELETE FROM a2a_tasks WHERE id = $1")
+                    .bind(task_id)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+
+            async fn list_ids(&self, _context: Option<&RequestContext>) -> Result<Vec<String>> {
+                let rows = sqlx::query("SELECT id FROM a2a_tasks")
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                Ok(rows.iter().map(|r| r.get("id")).collect())
+            }
+        }
+
+        /// PostgreSQL push notification config store.
+        #[derive(Debug, Clone)]
+        pub struct PostgresPushNotificationConfigStore {
+            pool: PgPool,
+        }
+
+        impl PostgresPushNotificationConfigStore {
+            /// Creates a new PostgreSQL push config store.
+            pub fn new(pool: PgPool) -> Self {
+                Self { pool }
+            }
+
+            /// Creates the required tables if they don't exist.
+            pub async fn initialize(&self) -> Result<()> {
+                sqlx::query(PUSH_CONFIG_TABLE_SCHEMA_POSTGRES)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+        }
+
+        #[async_trait]
+        impl PushNotificationConfigStore for PostgresPushNotificationConfigStore {
+            async fn save(&self, task_id: &str, config: &PushNotificationConfig) -> Result<()> {
+                let row = PushConfigRow::from_config(task_id, config);
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO a2a_push_configs (id, task_id, url, token, authentication)
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT(task_id, id) DO UPDATE SET
+                        url = EXCLUDED.url,
+                        token = EXCLUDED.token,
+                        authentication = EXCLUDED.authentication
+                    "#,
+                )
+                .bind(&row.id)
+                .bind(&row.task_id)
+                .bind(&row.url)
+                .bind(&row.token)
+                .bind(&row.authentication)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                Ok(())
+            }
+
+            async fn get(
+                &self,
+                task_id: &str,
+                config_id: Option<&str>,
+            ) -> Result<Option<PushNotificationConfig>> {
+                let row = match config_id {
+                    Some(cid) => {
+                        sqlx::query(
+                            "SELECT id, task_id, url, token, authentication::TEXT FROM a2a_push_configs WHERE task_id = $1 AND id = $2",
+                        )
+                        .bind(task_id)
+                        .bind(cid)
+                        .fetch_optional(&self.pool)
+                        .await
+                    }
+                    None => {
+                        sqlx::query(
+                            "SELECT id, task_id, url, token, authentication::TEXT FROM a2a_push_configs WHERE task_id = $1 LIMIT 1",
+                        )
+                        .bind(task_id)
+                        .fetch_optional(&self.pool)
+                        .await
+                    }
+                }
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                match row {
+                    Some(r) => {
+                        let config_row = PushConfigRow {
+                            id: r.get("id"),
+                            task_id: r.get("task_id"),
+                            url: r.get("url"),
+                            token: r.get("token"),
+                            authentication: r.get("authentication"),
+                        };
+                        Ok(Some(config_row.to_config()))
+                    }
+                    None => Ok(None),
+                }
+            }
+
+            async fn list(&self, task_id: &str) -> Result<Vec<PushNotificationConfig>> {
+                let rows = sqlx::query(
+                    "SELECT id, task_id, url, token, authentication::TEXT FROM a2a_push_configs WHERE task_id = $1",
+                )
+                .bind(task_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+
+                Ok(rows
+                    .iter()
+                    .map(|r| {
+                        PushConfigRow {
+                            id: r.get("id"),
+                            task_id: r.get("task_id"),
+                            url: r.get("url"),
+                            token: r.get("token"),
+                            authentication: r.get("authentication"),
+                        }
+                        .to_config()
+                    })
+                    .collect())
+            }
+
+            async fn delete(&self, task_id: &str, config_id: &str) -> Result<()> {
+                sqlx::query("DELETE FROM a2a_push_configs WHERE task_id = $1 AND id = $2")
+                    .bind(task_id)
+                    .bind(config_id)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+
+            async fn delete_all(&self, task_id: &str) -> Result<()> {
+                sqlx::query("DELETE FROM a2a_push_configs WHERE task_id = $1")
+                    .bind(task_id)
+                    .execute(&self.pool)
+                    .await
+                    .map_err(|e| crate::error::A2AError::Database(e.to_string()))?;
+                Ok(())
+            }
+        }
+    }
+
+    // Re-export implementations based on enabled features
+    #[cfg(feature = "sqlite")]
+    pub use sqlite::{SqlitePushNotificationConfigStore, SqliteTaskStore};
+
+    #[cfg(feature = "postgresql")]
+    pub use postgres::{PostgresPushNotificationConfigStore, PostgresTaskStore};
 }
 
 #[cfg(test)]

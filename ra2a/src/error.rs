@@ -114,6 +114,10 @@ pub enum A2AError {
     /// Server error - used by server-side code.
     #[error("Server error: {0}")]
     Server(#[from] ServerError),
+
+    /// Database error - used for SQL storage operations.
+    #[error("Database error: {0}")]
+    Database(String),
 }
 
 impl A2AError {

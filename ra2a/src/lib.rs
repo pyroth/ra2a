@@ -42,54 +42,24 @@ pub mod client;
 #[cfg_attr(docsrs, doc(cfg(feature = "server")))]
 pub mod server;
 
-// Internal utility modules with specific naming
+// Internal utility modules
 mod crypto;
 mod http_helpers;
-mod task_helpers;
 
-/// Tracing span helpers for A2A operations (requires `telemetry` feature).
-#[cfg(feature = "telemetry")]
-pub mod telemetry {
-    use tracing::{Span, info_span};
+/// Task helper utilities for creating and manipulating A2A objects.
+///
+/// This module provides utility functions similar to Python's `a2a/utils/helpers.py`.
+pub mod task_helpers;
 
-    /// Creates a span for a send_message operation.
-    pub fn send_message_span(task_id: &str, context_id: &str) -> Span {
-        info_span!(
-            "a2a.send_message",
-            task_id = %task_id,
-            context_id = %context_id,
-            otel.kind = "client"
-        )
-    }
-
-    /// Creates a span for a get_task operation.
-    pub fn get_task_span(task_id: &str) -> Span {
-        info_span!(
-            "a2a.get_task",
-            task_id = %task_id,
-            otel.kind = "client"
-        )
-    }
-
-    /// Creates a span for agent execution.
-    pub fn execute_span(task_id: &str, context_id: &str) -> Span {
-        info_span!(
-            "a2a.execute",
-            task_id = %task_id,
-            context_id = %context_id,
-            otel.kind = "server"
-        )
-    }
-
-    /// Creates a span for handling a request.
-    pub fn handle_request_span(method: &str) -> Span {
-        info_span!(
-            "a2a.handle_request",
-            method = %method,
-            otel.kind = "server"
-        )
-    }
-}
+/// Telemetry and tracing utilities for A2A operations.
+///
+/// This module provides comprehensive OpenTelemetry integration including:
+/// - Span builders with automatic attribute recording
+/// - Pre-defined spans for common A2A operations
+/// - Metrics collection and timing utilities
+///
+/// Enable the `telemetry` feature for full OpenTelemetry integration.
+pub mod telemetry;
 
 // Re-export commonly used types at crate root
 pub use error::{A2AError, Result};
