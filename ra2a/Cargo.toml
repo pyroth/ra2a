@@ -2,10 +2,11 @@
 name = "ra2a"
 version.workspace = true
 edition.workspace = true
-authors = ["A2A Project"]
-description = "A Rust implementation of the Agent2Agent (A2A) Protocol SDK"
 license.workspace = true
 repository.workspace = true
+readme = "../README.md"
+authors = ["QNTX"]
+description = "A Rust implementation of the Agent2Agent (A2A) Protocol SDK"
 keywords = ["a2a", "agent", "protocol", "ai", "rpc"]
 categories = ["network-programming", "web-programming"]
 
